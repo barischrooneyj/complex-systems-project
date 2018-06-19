@@ -37,14 +37,18 @@ class Particle():
          self.id, self.start, self.target, self.path)
 
 
-def init_traffic(graph, f):
+def init_traffic(graph, f, max_particles=1):
    """Set a fraction f of nodes as occupied with particles."""
    for node, node_data in graph.nodes(data=True):
+      # Particles that previously reached this target.
       node_data["old_particles"] = []
-      node_data["particle"] = (
-         None if random.uniform(0, 1) >= f
-         else Particle(node, 0, random.sample(graph.nodes(), 1)[0])
-      )
+      # A queue of particles at the node (one processed per timestep).
+      node_data["particles"] = []
+      node_data["max_particles"] = max_particles
+      for _ in range(max_particles):
+         if random.uniform(0, 1) >= f:
+            node_data["particles"].append(
+               Particle(node, 0, random.sample(graph.nodes(), 1)[0]))
 
 
 def move_particle(graph, from_node, to_node, timestep):
@@ -57,12 +61,12 @@ def move_particle(graph, from_node, to_node, timestep):
 
    """
    # Update the particle's path.
-   particle = graph.node[from_node]["particle"]
+   particle = graph.node[from_node]["particles"][0]
    particle.path += [(to_node, timestep)]
 
    # Move particle from one node to another.
-   graph.node[to_node]["particle"] = particle
-   graph.node[from_node]["particle"] = None
+   graph.node[to_node]["particles"].append(particle)
+   graph.node[from_node]["particles"].pop(0)
 
    # If target reached then generate new particle and save old particle.
    if to_node == particle.target:
@@ -91,10 +95,12 @@ def run_simulation(graph, particle_update, timesteps,
       # For each node that has a particle apply the particle update.
       particles_updated = set()
       for node, node_data in graph.nodes(data=True):
-         particle = graph.node[node]["particle"]
-         if particle and particle.id not in particles_updated:
-            particle_update(graph, node, timestep)
-            particles_updated.add(particle.id)
+         particles = graph.node[node]["particles"]
+         if particles:
+            particle = particles[0]
+            if particle.id not in particles_updated:
+               particle_update(graph, node, timestep)
+               particles_updated.add(particle.id)
 
 
 def random_walk(graph, current_node, timestep):
@@ -108,16 +114,16 @@ def random_walk(graph, current_node, timestep):
 
 def detour_at_obstacle(network, current_node, timestep):
    """Apply a particle update using DO dynamics."""
-   particle = network.node[current_node]["particle"]
+   particle = network.node[current_node]["particles"][0]
 
    # Calculate length to target from each free neighbor.
    path_lengths = defaultdict(lambda: [])
-   for neighbor_node in filter(
-         lambda n: not network.node[n]["particle"],
-         network.neighbors(current_node)):
-      neighbor_length = len(nx.shortest_path(
-         network, neighbor_node, particle.target))
-      path_lengths[neighbor_length] += [neighbor_node]
+   for neighbor_node in network.neighbors(current_node):
+      node_data = network.node[neighbor_node]
+      if len(node_data["particles"]) < node_data["max_particles"]:
+         neighbor_length = len(nx.shortest_path(
+            network, neighbor_node, particle.target))
+         path_lengths[neighbor_length] += [neighbor_node]
 
    # There may be NO path available.
    if not path_lengths.keys(): return

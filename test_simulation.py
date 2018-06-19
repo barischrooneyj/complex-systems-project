@@ -17,7 +17,7 @@ def test_init_traffic():
         assert isinstance(node_data["old_particles"], list)
         assert len(node_data["old_particles"]) == 0
     num_particles = sum(
-        bool(node_data["particle"])
+        len(node_data["particles"])
         for _, node_data in graph.nodes(data=True))
     measured_f = num_particles / len(graph.nodes())
     assert measured_f > f * 0.9
@@ -43,11 +43,16 @@ def test_detour_at_obstacle():
     graph.add_edges_from(
         [(1, 5), (1, 2), (1, 3), (1, 4), (4, 3), (3, 2), (2, 6)])
     for node in graph.nodes():
-        graph.node[node]["particle"] = None
-    graph.node[1]["particle"] = simulation.Particle(1, 0, 6)
-    graph.node[2]["particle"] = simulation.Particle(2, 0, 5)
-    graph.node[3]["particle"] = simulation.Particle(3, 0, 5)
-    node_one_id = graph.node[1]["particle"].id
+        graph.node[node]["particles"] = []
+        graph.node[node]["max_particles"] = 1
+    graph.node[1]["particles"] = [simulation.Particle(1, 0, 6)]
+    graph.node[2]["particles"] = [simulation.Particle(2, 0, 5)]
+    graph.node[3]["particles"] = [simulation.Particle(3, 0, 5)]
+    expected_id = graph.node[1]["particles"][0].id
     simulation.run_simulation(graph, simulation.detour_at_obstacle, 1)
-    expected_node = 4 if graph.node[4]["particle"] else 5
-    assert graph.node[expected_node]["particle"].id == node_one_id
+    # We expect the particle at either node 4 or 5.
+    expected_at = list(map(
+        lambda p: p[0].id if p else None,
+        [graph.node[n]["particles"] for n in [4, 5]]
+    ))
+    assert expected_id in expected_at
