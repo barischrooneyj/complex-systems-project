@@ -37,16 +37,22 @@ class Particle():
          self.id, self.start, self.target, self.path)
 
 
-def init_traffic(graph, f, max_particles=1):
-   """Set a fraction f of nodes as occupied with particles."""
+def init_network(graph, f, max_particles=1):
+   """Initialize necessary node attributes and potentially set a fraction f of
+   queue space as occupied with particles.
+
+   """
    for node, node_data in graph.nodes(data=True):
       # Particles that previously reached this target.
       node_data["old_particles"] = []
+
       # A queue of particles at the node (one processed per timestep).
       node_data["particles"] = []
       node_data["max_particles"] = max_particles
+
+      # Generate initial traffic/particles.
       for _ in range(max_particles):
-         if random.uniform(0, 1) >= f:
+         if random.uniform(0, 1) < f:
             node_data["particles"].append(
                Particle(node, 0, random.sample(graph.nodes(), 1)[0]))
 
@@ -143,6 +149,6 @@ def all_particles(graph):
 
 if __name__ == "__main__":
    graph = network.new_network(10, 8)
-   init_traffic(graph, f=0.5)
-   run_simulation(graph, detour_at_obstacle, timesteps=10)
+   init_network(graph, f=0.5)
+   run_simulation(graph, detour_at_obstacle, timesteps=20)
    print(all_particles(graph))
