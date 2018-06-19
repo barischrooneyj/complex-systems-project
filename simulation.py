@@ -1,5 +1,6 @@
 # Standard library imports.
 from collections import defaultdict
+from enum import Enum
 import itertools
 import random
 
@@ -32,8 +33,8 @@ class Particle():
 
    def __repr__(self):
       """Useful representation of a Particle for debugging."""
-      return "(start, target): ({}, {}), path: {}".format(
-         self.start, self.target, self.path)
+      return "id: {}, (start, target): ({}, {}), path: {}".format(
+         self.id, self.start, self.target, self.path)
 
 
 def init_traffic(graph, f):
@@ -70,10 +71,23 @@ def move_particle(graph, from_node, to_node, timestep):
          to_node, timestep, random.sample(graph.nodes(), 1)[0])
 
 
-def run_simulation(graph, particle_update, timesteps, print_=True):
+class SimOrder(Enum):
+   """The order that paricle updates are applied each timestep."""
+   Increasing = 1
+   Random = 2
+
+
+def run_simulation(graph, particle_update, timesteps,
+                   print_=True, order=SimOrder.Random):
    """Run the particle_update on all particles for N timesteps."""
    for timestep in range(timesteps):
       print("Timestep: {}".format(timestep)) if print_ else None
+
+      # Determine the order that particle updates are applied.
+      all_nodes = list(graph.nodes(data=True))
+      if order == SimOrder.Random:
+         random.shuffle(all_nodes)
+
       # For each node that has a particle apply the particle update.
       particles_updated = set()
       for node, node_data in graph.nodes(data=True):
@@ -83,17 +97,17 @@ def run_simulation(graph, particle_update, timesteps, print_=True):
             particles_updated.add(particle.id)
 
 
-def random_walk(graph, current_node):
-   """Apply network updates using RW dynamics."""
+def random_walk(graph, current_node, timestep):
+   """Apply a particle update using RW dynamics."""
    for neighbor_node in graph.neighbors(current_node):
       # If a neighbor is free then apply update.
-      if not graph.node[neighbor]["particle"]:
-         move_particle(graph, current_node, neighbor_node)
+      if not graph.node[neighbor_node]["particle"]:
+         move_particle(graph, current_node, neighbor_node, timestep)
          return
 
 
 def detour_at_obstacle(network, current_node, timestep):
-   """Apply network updates using DO dynamics."""
+   """Apply a particle update using DO dynamics."""
    particle = network.node[current_node]["particle"]
 
    # Calculate length to target from each free neighbor.
@@ -101,9 +115,9 @@ def detour_at_obstacle(network, current_node, timestep):
    for neighbor_node in filter(
          lambda n: not network.node[n]["particle"],
          network.neighbors(current_node)):
-      neighbour_length = len(nx.shortest_path(
+      neighbor_length = len(nx.shortest_path(
          network, neighbor_node, particle.target))
-      path_lengths[neighbour_length] += [neighbor_node]
+      path_lengths[neighbor_length] += [neighbor_node]
 
    # There may be NO path available.
    if not path_lengths.keys(): return

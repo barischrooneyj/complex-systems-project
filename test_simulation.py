@@ -1,4 +1,6 @@
 # Third party imports.
+import matplotlib.pyplot as plt
+import networkx as nx
 import pytest
 
 # Custom imports.
@@ -32,3 +34,20 @@ def test_run_simulation():
         graph.node[node]["updates"] += 1
         assert timestep == graph.node[node]["updates"]
     simulation.run_simulation(graph, update_particle, 10, print_=False)
+
+
+def test_detour_at_obstacle():
+    """Test that the DO particle update is applied correctly."""
+    graph = nx.Graph()
+    graph.add_nodes_from([1, 2, 3, 4, 5, 6])
+    graph.add_edges_from(
+        [(1, 5), (1, 2), (1, 3), (1, 4), (4, 3), (3, 2), (2, 6)])
+    for node in graph.nodes():
+        graph.node[node]["particle"] = None
+    graph.node[1]["particle"] = simulation.Particle(1, 0, 6)
+    graph.node[2]["particle"] = simulation.Particle(2, 0, 5)
+    graph.node[3]["particle"] = simulation.Particle(3, 0, 5)
+    node_one_id = graph.node[1]["particle"].id
+    simulation.run_simulation(graph, simulation.detour_at_obstacle, 1)
+    expected_node = 4 if graph.node[4]["particle"] else 5
+    assert graph.node[expected_node]["particle"].id == node_one_id
