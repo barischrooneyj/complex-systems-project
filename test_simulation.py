@@ -48,7 +48,9 @@ def test_detour_at_obstacle():
     graph.node[2]["particles"] = [simulation.Particle(2, 0, 5)]
     graph.node[3]["particles"] = [simulation.Particle(3, 0, 5)]
     expected_id = graph.node[1]["particles"][0].id
-    simulation.run_simulation(graph, simulation.detour_at_obstacle, 1)
+    # Run the simulation on predictable order of nodes.
+    simulation.run_simulation(graph, simulation.detour_at_obstacle, 1,
+                              order=simulation.SimOrder.Increasing)
     # We expect the particle at either node 4 or 5.
     expected_at = list(map(
         lambda p: p[0].id if p else None,

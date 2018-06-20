@@ -50,6 +50,9 @@ def init_network(graph, f, max_particles=1):
       node_data["particles"] = []
       node_data["max_particles"] = max_particles
 
+      # An empty routing table set at timestep -1.
+      node_data["routing_tables"] = {-1: {node: (0, node)}}
+
       # Generate initial traffic/particles.
       for _ in range(max_particles):
          if random.uniform(0, 1) < f:
@@ -67,40 +70,47 @@ def move_particle(graph, from_node, to_node, timestep):
 
    """
    # Update the particle's path.
-   particle = graph.node[from_node]["particles"][0]
-   particle.path += [(to_node, timestep)]
+   graph.node[from_node]["particles"][0].path += [(to_node, timestep)]
 
    # Move particle from one node to another.
-   graph.node[to_node]["particles"].append(particle)
-   graph.node[from_node]["particles"].pop(0)
+   graph.node[to_node]["particles"].append(
+      graph.node[from_node]["particles"].pop(0))
 
-   # If target reached then generate new particle and save old particle.
-   if to_node == particle.target:
-      graph.node[to_node]["old_particles"] += [particle]
-      graph.node[to_node]["particle"] = Particle(
-         to_node, timestep, random.sample(graph.nodes(), 1)[0])
+   # If target reached then retire old particle and generate new particle.
+   if to_node == graph.node[to_node]["particles"][-1].target:
+      graph.node[to_node]["old_particles"] += [
+         graph.node[to_node]["particles"].pop()]
+      random_start = random.sample(graph.nodes(), 1)[0]
+      graph.node[to_node]["particles"].append(
+         Particle(to_node, timestep, random_start))
 
 
 class SimOrder(Enum):
-   """The order that paricle updates are applied each timestep."""
+   """The order that particles updates are applied each timestep."""
    Increasing = 1
    Random = 2
 
 
-def run_simulation(graph, particle_update, timesteps,
-                   print_=True, order=SimOrder.Random):
-   """Run the particle_update on all particles for N timesteps."""
+def run_simulation(graph, particle_update, timesteps, print_=True,
+                   order=SimOrder.Random, router_update_interval=5,
+                   send_router_update=None):
+   """Run the particle_update on each node, for N timesteps."""
    for timestep in range(timesteps):
       print("Timestep: {}".format(timestep)) if print_ else None
+
+      # Update routing tables if it's time.
+      if send_router_update and timestep % router_update_interval == 0:
+         for node in graph.nodes():
+            send_router_update(graph, node, timestep)
 
       # Determine the order that particle updates are applied.
       all_nodes = list(graph.nodes(data=True))
       if order == SimOrder.Random:
          random.shuffle(all_nodes)
 
-      # For each node that has a particle apply the particle update.
+      # For each node that has a waiting particle, apply the particle update.
       particles_updated = set()
-      for node, node_data in graph.nodes(data=True):
+      for node, node_data in all_nodes:
          particles = graph.node[node]["particles"]
          if particles:
             particle = particles[0]
@@ -109,11 +119,43 @@ def run_simulation(graph, particle_update, timesteps,
                particles_updated.add(particle.id)
 
 
+def latest_routing_table(graph, node, timestep):
+   """The most recently updated routing table for node."""
+   routing_tables = graph.node[node]["routing_tables"]
+   latest_timestep = max(filter(lambda x: x < timestep, routing_tables.keys()))
+   return routing_tables[latest_timestep]
+
+
+def send_router_update(graph, current_node, timestep):
+   """Send routing table updates to all neighbors."""
+   current_table = latest_routing_table(graph, current_node, timestep)
+   for neighbor_node in graph.neighbors(current_node):
+      neighbor_table = latest_routing_table(graph, neighbor_node, timestep)
+
+      def routing_table_entry(node):
+         if node not in neighbor_table:
+            return current_table[node]
+         if node not in current_table:
+            result = neighbor_table[node]
+            return (result[0] + 1, result[1])
+         # Else we have both and choose minimum cost. Cost is found at index 0
+         # and the node via which to travel at index 1.
+         if current_table[node][0] < neighbor_table[node][0] + 1:
+            return current_table[node]
+         return (neighbor_table[node][0] + 1, neighbor_table[node][1])
+
+      graph.node[neighbor_node]["routing_tables"][timestep + 1] = {
+         node: routing_table_entry(node)
+         for node in set(current_table).union(set(neighbor_table))
+      }
+
+
 def random_walk(graph, current_node, timestep):
    """Apply a particle update using RW dynamics."""
    for neighbor_node in graph.neighbors(current_node):
       # If a neighbor is free then apply update.
-      if not graph.node[neighbor_node]["particle"]:
+      if (len(graph.node[neighbor_node]["particles"])
+          < graph.node[neighbor_node]["max_particles"]):
          move_particle(graph, current_node, neighbor_node, timestep)
          return
 
@@ -139,10 +181,22 @@ def detour_at_obstacle(network, current_node, timestep):
    move_particle(network, current_node, next_node, timestep)
 
 
+def send_from_routing_table(graph, current_node, timestep):
+   """Send the particle if in routing table, else re-queue the particle."""
+   routing_table = latest_routing_table(graph, current_node, timestep)
+   particle = graph.node[current_node]["particles"][0]
+   if particle.target in routing_table:
+      move_particle(graph, current_node, routing_table[particle.target][1], timestep)
+   else:
+      random_walk(graph, current_node, timestep)
+      # particles = graph.node[current_node]["particles"]
+      # particles.append(particles.pop(0))
+
+
 def all_particles(graph):
    """Collect all particles after a simulation."""
    return list(itertools.chain.from_iterable([
-      node_data["old_particles"]
+      node_data["old_particles"] + node_data["particles"]
       for _, node_data in graph.nodes(data=True)
    ]))
 
@@ -150,5 +204,6 @@ def all_particles(graph):
 if __name__ == "__main__":
    graph = network.new_network(10, 8)
    init_network(graph, f=0.5)
-   run_simulation(graph, detour_at_obstacle, timesteps=20)
+   run_simulation(graph, send_from_routing_table, timesteps=10,
+                  send_router_update=send_router_update)
    print(all_particles(graph))
