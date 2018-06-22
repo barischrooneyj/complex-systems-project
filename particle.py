@@ -18,8 +18,14 @@ class Particle():
       self.target = target_node
       self.path = []  # An ordered list of (node, timestep).
       self.id = get_unique_id()
+      self.data = None
 
    def __repr__(self):
       """Useful representation of a Particle for debugging."""
       return "id: {}, (start, target): ({}, {}), path: {}".format(
          self.id, self.start, self.target, self.path)
+
+
+def random_target(graph, node):
+   """A new particle at time-step 0 and with random target."""
+   return particle.Particle(node, 0, random.sample(graph.nodes(), 1)[0])

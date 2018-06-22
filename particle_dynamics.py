@@ -1,5 +1,9 @@
+# Standard library imports.
+import random
+
+# Custom imports.
 import routing_table
-from simulation import move_particle
+from simulation import move_particle, send_new_particle
 
 
 def random_walk(graph, current_node, timestep):
@@ -41,6 +45,24 @@ def send_from_routing_table(graph, current_node, timestep):
       move_particle(graph, current_node, table[particle.target][1], timestep)
    else:
       random_walk(graph, current_node, timestep)
-      # particles = graph.node[current_node]["particles"]
-      # particles.append(particles.pop(0))
 
+
+def gossip(graph, current_node, timestep, k_neighbors=None, state_update=None):
+   """Update gossip state, and send gossip info to k random neighbors."""
+
+   # First process any previously received particles (gossip messages).
+   while graph.node[current_node]["particles"]:
+      particle = graph.node[current_node]["particles"].pop(0)
+      graph.node[current_node]["data"] = state_update(
+         graph.node[current_node]["data"], particle.data)
+
+   def set_gossip_info(particle):
+      """Assign the node's gossip info to the particle."""
+      particle.data = graph.node[current_node]["data"]
+      return particle
+
+   # Send updated gossip state to a maximum k neighbors.
+   all_neighbors = list(graph.neighbors(current_node))
+   k_neighbors = random.sample(all_neighbors, k=min(len(all_neighbors), k_neighbors))
+   for neighbor_node in k_neighbors:
+      send_new_particle(graph, current_node, neighbor_node, timestep, set_gossip_info)
