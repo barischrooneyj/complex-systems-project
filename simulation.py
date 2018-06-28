@@ -22,14 +22,14 @@ def init_graph(graph, particle_density=0, max_node_particles=1,
       # Incoming queue of particles.
       node_data["particles"] = []
 
-      # Previously processed particles.
-      node_data["old_particles"] = []
+      # The maximum capacity of particles at this node.
+      node_data["max_particles"] = max_node_particles
 
       # Particles that arrived to a node at full capacity.
       node_data["overflow_particles"] = []
 
-      # The maximum capacity of particles at this node.
-      node_data["max_particles"] = max_node_particles
+      # Particles that reached their target.
+      node_data["old_particles"] = []
       
       # An empty routing table, tagged at time-step -1 (pre-simulation).
       node_data["routing_tables"] = {-1: {node: (0, node)}}
@@ -85,15 +85,20 @@ def move_particle(graph, from_node, to_node, timestep, regen=True):
 
 
 class SimOrder(Enum):
-   """The order that particles updates are applied each timestep."""
+   """The order updates are applied to nodes each time-step."""
    Increasing = 1
    Random = 2
 
 
-def run_simulation(graph, particle_update, timesteps=10, print_=True,
-                   order=SimOrder.Random, router_update_interval=5,
-                   send_router_update=None, collect=None):
-   """Run the particle_update on each node, for N timesteps."""
+def run_simulation(graph, update_f, order=SimOrder.Random, timesteps=10,
+                   additional_update_fs=[], collect=None):
+   """Run the update function on each node at each time-step.
+
+   Additional update functions can also be passed, each to be run every N
+   time-steps. These additional functions f need to be passed as a list
+   additional_update_fs=[(f, N)].
+
+   """
 
    # Setup data collection and run once before simulation.
    collected_data = {}
@@ -102,21 +107,22 @@ def run_simulation(graph, particle_update, timesteps=10, print_=True,
 
    # Apply update dynamics and data collection at each time-step.
    for timestep in range(timesteps):
-      print("Timestep: {}".format(timestep)) if print_ else None
-
-      # Update routing tables if requested and it's time.
-      if send_router_update and timestep % router_update_interval == 0:
-         for node in graph.nodes():
-            send_router_update(graph, node, timestep)
+      print("Timestep: {}".format(timestep))
 
       # Determine the order that particle updates are applied.
       all_nodes = list(graph.nodes(data=True))
       if order == SimOrder.Random:
          random.shuffle(all_nodes)
 
-      # For each node apply the particle dynamics.
+      # For each node apply the update function.
       for node, node_data in all_nodes:
-         particle_update(graph, node, timestep)
+         update_f(graph, node, timestep)
+
+      # Run any additional update functions if given.
+      for (additional_update_f, update_interval) in additional_update_fs:
+         if timestep % update_interval == 0:
+            for node in graph.nodes():
+               additional_update_f(graph, node, timestep)
 
       # Run data collection if requested.
       if collect:
@@ -128,6 +134,7 @@ def run_simulation(graph, particle_update, timesteps=10, print_=True,
 def all_particles(graph):
    """Collect all particles after a simulation."""
    return list(itertools.chain.from_iterable([
-      node_data["old_particles"] + node_data["particles"]
+      node_data["old_particles"] + node_data["particles"] +
+      node_data["overflow_particles"]
       for _, node_data in graph.nodes(data=True)
    ]))

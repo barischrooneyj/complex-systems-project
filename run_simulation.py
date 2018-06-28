@@ -49,7 +49,7 @@ def gossip_convergence(simParams):
 
       # Run the simulation and save collected data.
       collected_data = simulation.run_simulation(G,
-         particle_update=lambda g, n, t: particle_dynamics.gossip(
+         update_f=lambda g, n, t: particle_dynamics.gossip(
             g, n, t, k_neighbors=simParam.gossip_k,
             state_update=simParam.state_update_f),
          timesteps=simParam.max_timesteps,
