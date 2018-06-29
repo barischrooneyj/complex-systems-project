@@ -1,3 +1,5 @@
+Github: https://github.com/barischrooneyj/complex-systems-project
+
 ## The two main Python notebooks are included at the root level.
 
 ConvergenceGossip.ipynb  // Looking at convergence in aggregation gossip model.
